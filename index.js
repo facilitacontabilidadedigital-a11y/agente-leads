@@ -219,11 +219,46 @@ app.delete("/conversation/:jid", (req, res) => {
   res.json({ ok: true });
 });
 
+// Registra webhook na Evolution API
+async function registerWebhook(selfUrl) {
+  try {
+    const webhookUrl = `${selfUrl}/webhook`;
+    console.log(`📡 Registrando webhook: ${webhookUrl}`);
+    const res = await axios.post(
+      `${EVO_URL}/webhook/set/${EVO_INSTANCE}`,
+      {
+        url: webhookUrl,
+        webhook_by_events: false,
+        webhook_base64: false,
+        events: ["MESSAGES_UPSERT"]
+      },
+      { headers: { "apikey": EVO_KEY, "Content-Type": "application/json" }, timeout: 10000 }
+    );
+    console.log(`✅ Webhook registrado com sucesso:`, JSON.stringify(res.data));
+  } catch (e) {
+    console.error(`❌ Erro ao registrar webhook:`, e.response?.data || e.message);
+  }
+}
+
+// Rota para forçar re-registro do webhook manualmente
+app.post("/setup-webhook", async (req, res) => {
+  const token = req.headers["x-token"] || req.query.token;
+  if (token && token !== WEBHOOK_TOKEN) return res.status(401).json({ error: "Unauthorized" });
+  const selfUrl = process.env.SELF_URL || `https://agente-leads.onrender.com`;
+  await registerWebhook(selfUrl);
+  res.json({ ok: true, webhookUrl: `${selfUrl}/webhook` });
+});
+
 // ─── START ────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
+const SELF_URL = process.env.SELF_URL || "https://agente-leads.onrender.com";
+
 app.listen(PORT, () => {
   console.log(`\n🚀 Agente Facilita rodando na porta ${PORT}`);
   console.log(`📡 Evolution API: ${EVO_URL}`);
   console.log(`🤖 Instância: ${EVO_INSTANCE}`);
   console.log(`✅ Pronto para receber leads!\n`);
+
+  // Auto-registra o webhook ao iniciar
+  setTimeout(() => registerWebhook(SELF_URL), 3000);
 });
